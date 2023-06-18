@@ -1,0 +1,42 @@
+From bbee5eff34e7a17c4a1c7b59abe4823ccff7f58c Mon Sep 17 00:00:00 2001
+From: "L. E. Segovia" <amy@amyspark.me>
+Date: Sat, 29 Apr 2023 22:58:40 -0300
+Subject: [PATCH] tiff: Fix heap-buffer-overflow when endian swapping
+ big-endian IPTC metadata
+
+TIFFSwabArrayOfLong treats the array as N uint32_t, not N bytes (which
+is what TIFFGetField returns).
+
+BUG:468601
+CCBUG:413970
+---
+ plugins/impex/tiff/kis_tiff_import.cc | 7 ++++---
+ 1 file changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/plugins/impex/tiff/kis_tiff_import.cc b/plugins/impex/tiff/kis_tiff_import.cc
+index a5893d36560..e6d408e923b 100644
+--- a/plugins/impex/tiff/kis_tiff_import.cc
++++ b/plugins/impex/tiff/kis_tiff_import.cc
+@@ -1468,15 +1468,16 @@ KisTIFFImport::readImageFromTiff(KisDocument *m_doc,
+ 
+         // warning: profile is an array of uint32_t's
+         if (TIFFIsByteSwapped(image) != 0) {
+-            TIFFSwabArrayOfLong(iptc_profile_data, iptc_profile_size);
++            TIFFSwabArrayOfLong(iptc_profile_data,
++                                iptc_profile_size / sizeof(uint32_t));
+         }
+ 
+         KisMetaData::IOBackend *iptcIO =
+             KisMetadataBackendRegistry::instance()->value("iptc");
+ 
+         // Copy the xmp data into the byte array
+-        QByteArray ba(reinterpret_cast<char *>(iptc_profile_data),
+-                      static_cast<int>(sizeof(uint32_t) * iptc_profile_size));
++        QByteArray ba(reinterpret_cast<const char *>(iptc_profile_data),
++                      static_cast<int>(iptc_profile_size));
+         QBuffer buf(&ba);
+         iptcIO->loadFrom(layer->metaData(), &buf);
+     }
+-- 
+GitLab
+
